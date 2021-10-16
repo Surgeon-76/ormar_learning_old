@@ -1,85 +1,54 @@
-from typing import List, Optional
+from typing import Optional, Union, List
 
 import databases
 import sqlalchemy
-from fastapi import FastAPI
 
 import ormar
 
 
-
-app = FastAPI()
-
 user_name_db = 'surglin'
 password_db = 'Nusha230399'
-db_name = 'test_db'
+db_name = 'test_db_old'
 
-metadata = sqlalchemy.MetaData()
 database = databases.Database(f"postgresql://{user_name_db}:{password_db}@localhost/{db_name}")
-app.state.database = database
-
-engine = sqlalchemy.create_engine(f"postgresql://{user_name_db}:{password_db}@localhost/{db_name}")
-#metadata.create_all(engine)
+metadata = sqlalchemy.MetaData()
 
 
-@app.on_event("startup")
-async def startup():
-    await database.connect()
+class Author(ormar.Model):
+    class Meta:
+        tablename = "authors"
+        database = database
+        metadata = metadata
 
-
-@app.on_event("shutdown")
-async def shutdown():
-    await database.disconnect()
+    id: int = ormar.Integer(primary_key=True)
+    first_name: str = ormar.String(max_length=80)
+    last_name: str = ormar.String(max_length=80)
 
 
 class Category(ormar.Model):
     class Meta:
         tablename = "categories"
-        metadata = metadata
         database = database
+        metadata = metadata
 
     id: int = ormar.Integer(primary_key=True)
-    name: str = ormar.String(max_length=100)
+    name: str = ormar.String(max_length=40)
 
-class Item(ormar.Model):
+
+class Post(ormar.Model):
     class Meta:
-        tablename = 'items'
-        metadata = metadata
+        tablename = "posts"
         database = database
+        metadata = metadata
 
     id: int = ormar.Integer(primary_key=True)
-    name: str = ormar.String(max_length=100)
-    category: Optional[Category] = ormar.ForeignKey(Category, nullable=True)
-
-metadata.create_all(engine)
-
-@app.get("/items/", response_model=List[Item])
-async def get_items():
-    items = await Item.objects.select_related('category').all()
-    return items
+    title: str = ormar.String(max_length=200)
+    categories: Optional[List[Category]] = ormar.ManyToMany(Category)
+    author: Optional[Author] = ormar.ForeignKey(Author)
 
 
-@app.post("/items/", response_model= Item)
-async def create_item(item: Item):
-    await item.save()
-    return item
+async def guido():
+    return await Author.objects.create(first_name="Guido", last_name="Van Rossum")
+post = await Post.objects.create(title="Hello, M2M", author=guido)
+news = await Category.objects.create(name="News")
 
-
-@app.post("/categories/", response_model=Category)
-async def create_category(category: Category):
-    await category.save()
-    return category
-
-
-@app.put("/items/{item_id}")
-async def get_item(item_id: int, item: Item):
-    item_db = await Item.objects.get(pk=item_id)
-    return await item_db.update(**item.dict())
-
-
-@app.delete("/items/{item_id}")
-async def delete_item(item_id: int, item: Item = None):
-    if item:
-        return {"deleted_rows": await item.delete()}
-    item_db = await Item.objects.get(pk=item_id)
-    return {"deleted_rows": await item_db.delete()}
